@@ -121,9 +121,14 @@
     cursor: pointer;
   }
 
-  input[type="date"] {
-    width: 100%;
-    padding: 10px 14px;
+  .date-inputs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .date-part {
+    padding: 10px 10px;
     border: 1.5px solid var(--input-border);
     border-radius: 8px;
     font-size: 1rem;
@@ -131,10 +136,22 @@
     color: var(--text);
     outline: none;
     transition: border-color 0.2s;
+    -moz-appearance: textfield;
+    text-align: center;
   }
 
-  input[type="date"]:focus {
-    border-color: var(--primary);
+  .date-part::-webkit-outer-spin-button,
+  .date-part::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  .date-part:focus { border-color: var(--primary); }
+
+  .date-part-year { width: 88px; }
+  .date-part-md   { width: 58px; }
+
+  .date-sep {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    font-weight: 500;
   }
 
   button#calcBtn {
@@ -447,8 +464,15 @@
       </div>
     </div>
     <div class="form-group">
-      <label for="birthday">生年月日</label>
-      <input type="date" id="birthday" max="">
+      <label>生年月日</label>
+      <div class="date-inputs">
+        <input type="number" id="b-year" class="date-part date-part-year" placeholder="1990" min="1868" max="2099">
+        <span class="date-sep">年</span>
+        <input type="number" id="b-month" class="date-part date-part-md" placeholder="1" min="1" max="12">
+        <span class="date-sep">月</span>
+        <input type="number" id="b-day" class="date-part date-part-md" placeholder="1" min="1" max="31">
+        <span class="date-sep">日</span>
+      </div>
     </div>
     <button id="calcBtn">調べる</button>
   </div>
@@ -718,19 +742,20 @@ function getLunar(year, month, day) {
 
 // ---- Main ----
 
-document.getElementById('birthday').max = new Date().toISOString().split('T')[0];
-
 document.getElementById('calcBtn').addEventListener('click', () => {
-  const dateVal = document.getElementById('birthday').value;
+  const y = parseInt(document.getElementById('b-year').value, 10);
+  const m = parseInt(document.getElementById('b-month').value, 10);
+  const d = parseInt(document.getElementById('b-day').value, 10);
   const gender = document.querySelector('input[name="gender"]:checked').value;
 
-  if (!dateVal) {
-    alert('生年月日を入力してください。');
-    return;
-  }
+  if (!y || !m || !d) { alert('生年月日を入力してください。'); return; }
+  if (m < 1 || m > 12) { alert('月は1〜12で入力してください。'); return; }
+  if (d < 1 || d > 31) { alert('日は1〜31で入力してください。'); return; }
 
-  const [y, m, d] = dateVal.split('-').map(Number);
   const birthDate = new Date(y, m - 1, d);
+  if (isNaN(birthDate.getTime()) || birthDate > new Date()) {
+    alert('正しい生年月日を入力してください。'); return;
+  }
   const today = new Date();
 
   // Age
