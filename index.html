@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>誕生日情報アプリ</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card-bg: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --border: #e0e0e0;
+    --primary: #5c6bc0;
+    --primary-hover: #3f51b5;
+    --section-header-bg: #ede7f6;
+    --section-header-text: #4527a0;
+    --badge-future: #e3f2fd;
+    --badge-future-text: #1565c0;
+    --badge-past: #f3f3f3;
+    --badge-past-text: #777;
+    --badge-now: #fff8e1;
+    --badge-now-text: #e65100;
+    --badge-taiaku: #fce4ec;
+    --badge-taiaku-text: #c62828;
+    --input-bg: #fff;
+    --input-border: #ccc;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212;
+      --card-bg: #1e1e1e;
+      --text: #e8e8e8;
+      --text-muted: #aaa;
+      --border: #333;
+      --primary: #7986cb;
+      --primary-hover: #5c6bc0;
+      --section-header-bg: #1a1040;
+      --section-header-text: #b39ddb;
+      --badge-future: #0d2137;
+      --badge-future-text: #64b5f6;
+      --badge-past: #2a2a2a;
+      --badge-past-text: #888;
+      --badge-now: #2a1f00;
+      --badge-now-text: #ffb74d;
+      --badge-taiaku: #2d0a0a;
+      --badge-taiaku-text: #ef9a9a;
+      --input-bg: #2a2a2a;
+      --input-border: #444;
+      --shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px 16px 60px;
+  }
+
+  .container {
+    max-width: 540px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: var(--primary);
+    letter-spacing: 0.05em;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    letter-spacing: 0.03em;
+  }
+
+  .radio-group {
+    display: flex;
+    gap: 12px;
+  }
+
+  .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    margin-bottom: 0;
+  }
+
+  input[type="radio"] {
+    accent-color: var(--primary);
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
+
+  input[type="date"] {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid var(--input-border);
+    border-radius: 8px;
+    font-size: 1rem;
+    background: var(--input-bg);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="date"]:focus {
+    border-color: var(--primary);
+  }
+
+  button#calcBtn {
+    width: 100%;
+    padding: 13px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    transition: background 0.2s, transform 0.1s;
+    margin-top: 4px;
+  }
+
+  button#calcBtn:hover { background: var(--primary-hover); }
+  button#calcBtn:active { transform: scale(0.98); }
+
+  #results { display: none; }
+
+  .section {
+    background: var(--card-bg);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    background: var(--section-header-bg);
+    color: var(--section-header-text);
+    padding: 12px 18px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-body {
+    padding: 16px 18px;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+
+  .info-row:last-child { border-bottom: none; }
+
+  .info-label {
+    font-size: 0.83rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    white-space: nowrap;
+    min-width: 90px;
+  }
+
+  .info-value {
+    font-size: 0.97rem;
+    font-weight: 600;
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .sub-note {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  .swatch-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  .color-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  /* Yakudoshi table */
+  .yaku-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    margin-top: 4px;
+  }
+
+  .yaku-table th {
+    text-align: left;
+    padding: 7px 8px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .yaku-table td {
+    padding: 9px 8px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  .yaku-table tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .badge-now { background: var(--badge-now); color: var(--badge-now-text); }
+  .badge-future { background: var(--badge-future); color: var(--badge-future-text); }
+  .badge-past { background: var(--badge-past); color: var(--badge-past-text); }
+  .badge-taiaku { background: var(--badge-taiaku); color: var(--badge-taiaku-text); font-size: 0.7rem; }
+
+  .yaku-age {
+    font-weight: 700;
+    font-size: 1rem;
+  }
+
+  .taiaku-mark {
+    font-size: 0.72rem;
+    background: var(--badge-taiaku);
+    color: var(--badge-taiaku-text);
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 4px;
+  }
+
+  .caution-note {
+    font-size: 0.77rem;
+    color: var(--text-muted);
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: 8px;
+    line-height: 1.6;
+  }
+
+  .approx-note {
+    font-size: 0.77rem;
+    color: var(--text-muted);
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>誕生日情報アプリ</h1>
+
+  <div class="card">
+    <div class="form-group">
+      <label>性別</label>
+      <div class="radio-group">
+        <label><input type="radio" name="gender" value="male" checked> 男性</label>
+        <label><input type="radio" name="gender" value="female"> 女性</label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="birthday">生年月日</label>
+      <input type="date" id="birthday" max="">
+    </div>
+    <button id="calcBtn">調べる</button>
+  </div>
+
+  <div id="results">
+    <!-- 基本情報 -->
+    <div class="section">
+      <div class="section-header">基本情報</div>
+      <div class="section-body">
+        <div class="info-row"><span class="info-label">満年齢</span><span class="info-value" id="r-age"></span></div>
+        <div class="info-row"><span class="info-label">数え年</span><span class="info-value" id="r-kazoedoshi"></span></div>
+        <div class="info-row"><span class="info-label">星座</span><span class="info-value" id="r-zodiac"></span></div>
+        <div class="info-row"><span class="info-label">干支</span><span class="info-value" id="r-eto"></span></div>
+        <div class="info-row"><span class="info-label">誕生曜日</span><span class="info-value" id="r-dow"></span></div>
+        <div class="info-row"><span class="info-label">生まれ季節</span><span class="info-value" id="r-season"></span></div>
+      </div>
+    </div>
+
+    <!-- 旧暦 -->
+    <div class="section">
+      <div class="section-header">旧暦・元号</div>
+      <div class="section-body">
+        <div class="info-row"><span class="info-label">旧暦の誕生日</span><span class="info-value" id="r-lunar"></span></div>
+        <div class="info-row"><span class="info-label">元号</span><span class="info-value" id="r-gengo"></span></div>
+        <p class="approx-note">※ 旧暦は近似値です。実際の旧暦とは1〜2日程度のずれが生じることがあります。</p>
+      </div>
+    </div>
+
+    <!-- 誕生石・ラッキーカラー -->
+    <div class="section">
+      <div class="section-header">誕生石・ラッキーカラー</div>
+      <div class="section-body">
+        <div class="info-row"><span class="info-label">誕生石①</span><span class="info-value" id="r-stone1"></span></div>
+        <div class="info-row"><span class="info-label">誕生石②</span><span class="info-value" id="r-stone2"></span></div>
+        <div class="info-row"><span class="info-label">ラッキーカラー</span>
+          <span class="info-value" id="r-color"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 厄年 -->
+    <div class="section">
+      <div class="section-header">厄年</div>
+      <div class="section-body">
+        <table class="yaku-table">
+          <thead>
+            <tr>
+              <th>種別</th>
+              <th>数え年</th>
+              <th>西暦年</th>
+              <th>状況</th>
+            </tr>
+          </thead>
+          <tbody id="r-yaku"></tbody>
+        </table>
+        <p class="caution-note">
+          ※ 厄年は数え年で数えます。地域・宗派によって異なる場合があります。
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Data ----
+const STONES = [
+  null,
+  { j1:'ガーネット', e1:'Garnet', j2:'ローズクォーツ', e2:'Rose Quartz' },
+  { j1:'アメジスト', e1:'Amethyst', j2:'クリソプレーズ', e2:'Chrysoprase' },
+  { j1:'アクアマリン', e1:'Aquamarine', j2:'ブラッドストーン', e2:'Bloodstone' },
+  { j1:'ダイヤモンド', e1:'Diamond', j2:'モルガナイト', e2:'Morganite' },
+  { j1:'エメラルド', e1:'Emerald', j2:'クリソプレーズ', e2:'Chrysoprase' },
+  { j1:'ムーンストーン', e1:'Moonstone', j2:'パール', e2:'Pearl' },
+  { j1:'ルビー', e1:'Ruby', j2:'カーネリアン', e2:'Carnelian' },
+  { j1:'ペリドット', e1:'Peridot', j2:'スピネル', e2:'Spinel' },
+  { j1:'サファイア', e1:'Sapphire', j2:'クンツァイト', e2:'Kunzite' },
+  { j1:'オパール', e1:'Opal', j2:'トルマリン', e2:'Tourmaline' },
+  { j1:'トパーズ', e1:'Topaz', j2:'シトリン', e2:'Citrine' },
+  { j1:'ターコイズ', e1:'Turquoise', j2:'タンザナイト', e2:'Tanzanite' },
+];
+
+const LUCKY_COLORS = [
+  null,
+  { name:'ディープレッド', hex:'#8B1A1A' },
+  { name:'ラベンダー', hex:'#9B7EC8' },
+  { name:'アクアブルー', hex:'#00CED1' },
+  { name:'ダイヤモンドホワイト', hex:'#E8E8E8' },
+  { name:'エメラルドグリーン', hex:'#50C878' },
+  { name:'パールホワイト', hex:'#F0EAD6' },
+  { name:'ルビーレッド', hex:'#9B111E' },
+  { name:'オリーブグリーン', hex:'#808000' },
+  { name:'ロイヤルブルー', hex:'#4169E1' },
+  { name:'コーラルピンク', hex:'#FF7F6E' },
+  { name:'ゴールデンイエロー', hex:'#FFD700' },
+  { name:'ターコイズブルー', hex:'#40E0D0' },
+];
+
+const ZODIAC = [
+  { ja:'山羊座', en:'Capricorn', from:[12,22], to:[1,19] },
+  { ja:'水瓶座', en:'Aquarius', from:[1,20], to:[2,18] },
+  { ja:'魚座', en:'Pisces', from:[2,19], to:[3,20] },
+  { ja:'牡羊座', en:'Aries', from:[3,21], to:[4,19] },
+  { ja:'牡牛座', en:'Taurus', from:[4,20], to:[5,20] },
+  { ja:'双子座', en:'Gemini', from:[5,21], to:[6,21] },
+  { ja:'蟹座', en:'Cancer', from:[6,22], to:[7,22] },
+  { ja:'獅子座', en:'Leo', from:[7,23], to:[8,22] },
+  { ja:'乙女座', en:'Virgo', from:[8,23], to:[9,22] },
+  { ja:'天秤座', en:'Libra', from:[9,23], to:[10,23] },
+  { ja:'蠍座', en:'Scorpio', from:[10,24], to:[11,22] },
+  { ja:'射手座', en:'Sagittarius', from:[11,23], to:[12,21] },
+];
+
+const ETO = ['子（ね）','丑（うし）','寅（とら）','卯（う）','辰（たつ）','巳（み）','午（うま）','未（ひつじ）','申（さる）','酉（とり）','戌（いぬ）','亥（い）'];
+
+const LUNAR_MONTHS = ['睦月','如月','弥生','卯月','皐月','水無月','文月','葉月','長月','神無月','霜月','師走'];
+
+const KANJI_DAYS = ['','一','二','三','四','五','六','七','八','九','十',
+  '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十',
+  '二十一','二十二','二十三','二十四','二十五','二十六','二十七','二十八','二十九','三十'];
+
+const GENGO = [
+  { name:'令和', start: new Date(2019,4,1) },
+  { name:'平成', start: new Date(1989,0,8) },
+  { name:'昭和', start: new Date(1926,11,25) },
+  { name:'大正', start: new Date(1912,6,30) },
+  { name:'明治', start: new Date(1868,0,25) },
+];
+
+const WEEKDAYS = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日'];
+const SEASONS = [
+  { name:'冬', months:'12・1・2月' },
+  { name:'春', months:'3・4・5月' },
+  { name:'夏', months:'6・7・8月' },
+  { name:'秋', months:'9・10・11月' },
+];
+
+const YAKU_MALE = [
+  { age:24, label:'前厄', taiaku:false },
+  { age:25, label:'本厄', taiaku:false },
+  { age:26, label:'後厄', taiaku:false },
+  { age:41, label:'前厄（大厄）', taiaku:true },
+  { age:42, label:'本厄（大厄）', taiaku:true },
+  { age:43, label:'後厄（大厄）', taiaku:true },
+  { age:60, label:'前厄', taiaku:false },
+  { age:61, label:'本厄', taiaku:false },
+  { age:62, label:'後厄', taiaku:false },
+];
+
+const YAKU_FEMALE = [
+  { age:18, label:'前厄', taiaku:false },
+  { age:19, label:'本厄', taiaku:false },
+  { age:20, label:'後厄', taiaku:false },
+  { age:32, label:'前厄（大厄）', taiaku:true },
+  { age:33, label:'本厄（大厄）', taiaku:true },
+  { age:34, label:'後厄（大厄）', taiaku:true },
+  { age:36, label:'前厄', taiaku:false },
+  { age:37, label:'本厄', taiaku:false },
+  { age:38, label:'後厄', taiaku:false },
+  { age:60, label:'前厄', taiaku:false },
+  { age:61, label:'本厄', taiaku:false },
+  { age:62, label:'後厄', taiaku:false },
+];
+
+// ---- Helpers ----
+
+function getAge(birthDate, today) {
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const hadBirthday = (today.getMonth() > birthDate.getMonth()) ||
+    (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
+  if (!hadBirthday) age--;
+  return { age, hadBirthday };
+}
+
+function getZodiac(month, day) {
+  for (const z of ZODIAC) {
+    const [fm, fd] = z.from;
+    const [tm, td] = z.to;
+    if (fm > tm) {
+      // wraps year (Capricorn Dec-Jan)
+      if ((month === fm && day >= fd) || (month === tm && day <= td)) return z;
+    } else {
+      if ((month > fm || (month === fm && day >= fd)) &&
+          (month < tm || (month === tm && day <= td))) return z;
+    }
+  }
+  return ZODIAC[0];
+}
+
+function getEto(year) {
+  return ETO[((year - 4) % 12 + 12) % 12];
+}
+
+function getSeason(month) {
+  if ([3,4,5].includes(month)) return SEASONS[1];
+  if ([6,7,8].includes(month)) return SEASONS[2];
+  if ([9,10,11].includes(month)) return SEASONS[3];
+  return SEASONS[0];
+}
+
+function getGengo(date) {
+  for (const g of GENGO) {
+    if (date >= g.start) {
+      const year = date.getFullYear() - g.start.getFullYear();
+      const isSameYear = date.getMonth() >= g.start.getMonth() &&
+        (date.getMonth() > g.start.getMonth() || date.getDate() >= g.start.getDate());
+      let nen = date.getFullYear() - g.start.getFullYear() + 1;
+      // adjust: if before anniversary in start year
+      if (date.getFullYear() === g.start.getFullYear()) nen = 1;
+      else {
+        const startAnniv = new Date(date.getFullYear(), g.start.getMonth(), g.start.getDate());
+        if (date < startAnniv) nen--;
+      }
+      return `${g.name}${nen}年`;
+    }
+  }
+  return '元号なし';
+}
+
+// Julian Day Number
+function dateToJDN(y, m, d) {
+  const a = Math.floor((14 - m) / 12);
+  const yy = y + 4800 - a;
+  const mm = m + 12 * a - 3;
+  return d + Math.floor((153 * mm + 2) / 5) + 365 * yy + Math.floor(yy / 4) - Math.floor(yy / 100) + Math.floor(yy / 400) - 32045;
+}
+
+function getLunar(year, month, day) {
+  const SYNODIC = 29.530589;
+  const BASE_JDN = 2451550; // 2000-01-06 new moon
+
+  const jdn = dateToJDN(year, month, day);
+  const daysSinceBase = jdn - BASE_JDN;
+  const cyclePos = ((daysSinceBase % SYNODIC) + SYNODIC) % SYNODIC;
+  const lunarDay = Math.floor(cyclePos) + 1;
+
+  // Approximate lunar month from solar month
+  // Lunar new year lags solar by ~1-2 months, rough offset
+  const solarDayOfYear = Math.floor((jdn - dateToJDN(year, 1, 1)));
+  // rough lunar month: subtract ~30 days for offset
+  let lunarMonthIdx = ((month - 2 + 12) % 12);
+
+  const lunarMonthName = LUNAR_MONTHS[lunarMonthIdx];
+  const lunarDayKanji = KANJI_DAYS[Math.min(lunarDay, 30)] || '三十';
+  return `${lunarMonthName}・${lunarDayKanji}日`;
+}
+
+// ---- Main ----
+
+document.getElementById('birthday').max = new Date().toISOString().split('T')[0];
+
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const dateVal = document.getElementById('birthday').value;
+  const gender = document.querySelector('input[name="gender"]:checked').value;
+
+  if (!dateVal) {
+    alert('生年月日を入力してください。');
+    return;
+  }
+
+  const [y, m, d] = dateVal.split('-').map(Number);
+  const birthDate = new Date(y, m - 1, d);
+  const today = new Date(2026, 3, 13); // today: 2026-04-13
+
+  // Age
+  const { age, hadBirthday } = getAge(birthDate, today);
+  const ageNote = hadBirthday ? '（今年の誕生日は済）' : '（今年の誕生日はまだ）';
+  document.getElementById('r-age').innerHTML = `${age}歳 <span class="sub-note">${ageNote}</span>`;
+
+  // 数え年
+  const kazoedoshi = today.getFullYear() - y + 1;
+  document.getElementById('r-kazoedoshi').textContent = `${kazoedoshi}歳`;
+
+  // 星座
+  const zodiac = getZodiac(m, d);
+  document.getElementById('r-zodiac').textContent = `${zodiac.ja}（${zodiac.en}）`;
+
+  // 干支
+  const etoStr = getEto(y);
+  const etoBase = etoStr.match(/^(.+?)（(.+?)）$/);
+  if (etoBase) {
+    document.getElementById('r-eto').innerHTML = `${etoBase[1]} <span class="sub-note">（${etoBase[2]}）</span>`;
+  } else {
+    document.getElementById('r-eto').textContent = etoStr;
+  }
+
+  // 誕生曜日
+  document.getElementById('r-dow').textContent = `${WEEKDAYS[birthDate.getDay()]}生まれ`;
+
+  // 生まれ季節
+  const season = getSeason(m);
+  document.getElementById('r-season').textContent = `${season.name}（${season.months}）`;
+
+  // 旧暦
+  document.getElementById('r-lunar').textContent = getLunar(y, m, d);
+
+  // 元号
+  document.getElementById('r-gengo').textContent = getGengo(birthDate);
+
+  // 誕生石
+  const stone = STONES[m];
+  document.getElementById('r-stone1').innerHTML = `${stone.j1} <span class="sub-note">（${stone.e1}）</span>`;
+  document.getElementById('r-stone2').innerHTML = `${stone.j2} <span class="sub-note">（${stone.e2}）</span>`;
+
+  // ラッキーカラー
+  const lc = LUCKY_COLORS[m];
+  document.getElementById('r-color').innerHTML =
+    `<span class="swatch-row"><span class="color-swatch" style="background:${lc.hex}"></span>${lc.name} <span class="sub-note">${lc.hex}</span></span>`;
+
+  // 厄年
+  const yakuList = gender === 'male' ? YAKU_MALE : YAKU_FEMALE;
+  const thisYear = today.getFullYear();
+  const tbody = document.getElementById('r-yaku');
+  tbody.innerHTML = '';
+  for (const yaku of yakuList) {
+    // 数え年 = thisYear - y + 1 → 厄年の西暦 = y + yaku.age - 1
+    const yakuYear = y + yaku.age - 1;
+    const diff = yakuYear - thisYear;
+    let badgeClass, badgeText;
+    if (diff === 0) { badgeClass = 'badge-now'; badgeText = '今年'; }
+    else if (diff > 0) { badgeClass = 'badge-future'; badgeText = `${yakuYear}年（${diff}年後）`; }
+    else { badgeClass = 'badge-past'; badgeText = `${yakuYear}年（済）`; }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${yaku.label}${yaku.taiaku ? '' : ''}</td>
+      <td><span class="yaku-age">${yaku.age}歳</span>${yaku.taiaku ? '<span class="taiaku-mark">大厄</span>' : ''}</td>
+      <td style="color:var(--text-muted);font-size:0.88rem">${yakuYear}年</td>
+      <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+</script>
+</body>
+</html>
