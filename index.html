@@ -406,6 +406,32 @@
     color: var(--primary);
     text-decoration: none;
   }
+
+  .wiki-rank {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 0.72rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 11px;
+  }
+
+  .wiki-views {
+    display: inline-block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+
+  .wiki-views::before {
+    content: '👁 ';
+  }
 </style>
 </head>
 <body>
@@ -798,6 +824,7 @@ function safeUrl(url) {
   } catch { return ''; }
 }
 
+// 配列から時代を均等にカバーしつつ n 件を選ぶ
 function pickSpread(arr, n) {
   const sorted = [...arr].sort((a, b) => a.year - b.year);
   if (sorted.length <= n) return sorted;
@@ -805,7 +832,13 @@ function pickSpread(arr, n) {
   return Array.from({ length: n }, (_, i) => sorted[Math.round(i * step)]);
 }
 
-// MyMemory 無料翻訳API（キー不要、英語→日本語）
+function setWikiMsg(msg) {
+  const html = `<div class="wiki-loading"><div class="wiki-spinner"></div>${msg}</div>`;
+  document.getElementById('r-births').innerHTML = html;
+  document.getElementById('r-events').innerHTML = html;
+}
+
+// MyMemory 無料翻訳 API（キー不要）
 async function translateText(text) {
   try {
     const res = await fetch(
@@ -816,13 +849,44 @@ async function translateText(text) {
       return data.responseData.translatedText;
     }
   } catch {}
-  return text; // 翻訳失敗時は原文を返す
+  return text;
 }
 
 async function translateItems(items) {
   return Promise.all(items.map(item =>
-    translateText(item.text).then(translated => ({ ...item, text: translated }))
+    translateText(item.text).then(t => ({ ...item, text: t }))
   ));
+}
+
+// Wikimedia ページビュー API で過去3ヶ月の合計アクセス数を取得
+async function fetchPageViews(title, lang) {
+  if (!title) return 0;
+  const project = lang === 'ja' ? 'ja.wikipedia.org' : 'en.wikipedia.org';
+  const now = new Date();
+  const fmt = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}01`;
+  const end = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+  const start = fmt(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+  try {
+    const url = `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/${project}/all-access/all-agents/${encodeURIComponent(title.replace(/ /g,'_'))}/monthly/${start}/${end}`;
+    const res = await fetch(url);
+    if (!res.ok) return 0;
+    const data = await res.json();
+    return (data.items || []).reduce((sum, i) => sum + (i.views || 0), 0);
+  } catch { return 0; }
+}
+
+// 全アイテムのページビューを並列取得してビュー数順にソート
+async function sortByPageViews(items, lang) {
+  const views = await Promise.all(
+    items.map(item => fetchPageViews(item.pages?.[0]?.title || '', lang))
+  );
+  return items
+    .map((item, i) => ({ ...item, _views: views[i] }))
+    .sort((a, b) => {
+      if (b._views !== a._views) return b._views - a._views;
+      // 同数の場合はサムネイルありを優先
+      return (b.pages?.[0]?.thumbnail ? 1 : 0) - (a.pages?.[0]?.thumbnail ? 1 : 0);
+    });
 }
 
 async function fetchWikiData(month, day) {
@@ -831,25 +895,11 @@ async function fetchWikiData(month, day) {
   const jaBase = 'https://ja.wikipedia.org/api/rest_v1/feed/onthisday';
   const enBase = 'https://en.wikipedia.org/api/rest_v1/feed/onthisday';
 
-  const setLoading = () => {
-    const spinner = '<div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>';
-    document.getElementById('r-births').innerHTML = spinner;
-    document.getElementById('r-events').innerHTML = spinner;
-  };
-  const setTranslating = () => {
-    const msg = '<div class="wiki-loading"><div class="wiki-spinner"></div>日本語に翻訳中...</div>';
-    document.getElementById('r-births').innerHTML = msg;
-    document.getElementById('r-events').innerHTML = msg;
-  };
-  const setError = () => {
-    const msg = '<p class="wiki-error">データの取得に失敗しました。ネットワーク接続を確認してください。</p>';
-    document.getElementById('r-births').innerHTML = msg;
-    document.getElementById('r-events').innerHTML = msg;
-  };
+  setWikiMsg('読み込み中...');
 
-  setLoading();
+  let births = [], events = [], lang = 'ja';
 
-  // ① 日本語 Wikipedia を試みる
+  // ① 日本語 Wikipedia を優先
   try {
     const [bRes, eRes] = await Promise.all([
       fetch(`${jaBase}/births/${mm}/${dd}`),
@@ -857,48 +907,65 @@ async function fetchWikiData(month, day) {
     ]);
     if (bRes.ok && eRes.ok) {
       const [bData, eData] = await Promise.all([bRes.json(), eRes.json()]);
-      const births = bData.births || [];
-      const events = eData.events || [];
-      if (births.length >= 2 && events.length >= 2) {
-        renderBirths(births, 'ja');
-        renderEvents(events, 'ja');
-        return;
+      if ((bData.births||[]).length >= 2 && (eData.events||[]).length >= 2) {
+        births = bData.births;
+        events = eData.events;
+        lang = 'ja';
       }
     }
   } catch {}
 
-  // ② 英語 Wikipedia + MyMemory 翻訳にフォールバック
-  try {
-    const [bRes, eRes] = await Promise.all([
-      fetch(`${enBase}/births/${mm}/${dd}`),
-      fetch(`${enBase}/events/${mm}/${dd}`)
-    ]);
-    const [bData, eData] = await Promise.all([bRes.json(), eRes.json()]);
-
-    const rawBirths = pickSpread(bData.births || [], 7);
-    const rawEvents = pickSpread(eData.events || [], 7);
-
-    setTranslating();
-
-    const [transBirths, transEvents] = await Promise.all([
-      translateItems(rawBirths),
-      translateItems(rawEvents)
-    ]);
-    renderBirths(transBirths, 'en');
-    renderEvents(transEvents, 'en');
-  } catch {
-    setError();
+  // ② 英語 Wikipedia にフォールバック
+  if (!births.length) {
+    try {
+      const [bRes, eRes] = await Promise.all([
+        fetch(`${enBase}/births/${mm}/${dd}`),
+        fetch(`${enBase}/events/${mm}/${dd}`)
+      ]);
+      const [bData, eData] = await Promise.all([bRes.json(), eRes.json()]);
+      births = bData.births || [];
+      events = eData.events || [];
+      lang = 'en';
+    } catch {
+      const err = '<p class="wiki-error">データの取得に失敗しました。ネットワーク接続を確認してください。</p>';
+      document.getElementById('r-births').innerHTML = err;
+      document.getElementById('r-events').innerHTML = err;
+      return;
+    }
   }
+
+  // ランキング用に多めの候補を用意
+  const candBirths = pickSpread(births, 14);
+  const candEvents = pickSpread(events, 14);
+
+  const msg = lang === 'en' ? '翻訳・アクセス数を集計中...' : 'アクセス数を集計中...';
+  setWikiMsg(msg);
+
+  // ③ 翻訳（英語の場合）とページビュー取得を並列実行
+  const [transBirths, transEvents, sortedBirths, sortedEvents] = await Promise.all([
+    lang === 'en' ? translateItems(candBirths) : Promise.resolve(candBirths),
+    lang === 'en' ? translateItems(candEvents) : Promise.resolve(candEvents),
+    sortByPageViews(candBirths, lang),
+    sortByPageViews(candEvents, lang)
+  ]);
+
+  // 翻訳済みテキストをページビュー順リストに適用
+  const applyTranslation = (sorted, translated) =>
+    sorted.map(item => {
+      const tr = translated.find(t => t.year === item.year && t.text === item.text ||
+                                      t.year === item.year && t.pages?.[0]?.title === item.pages?.[0]?.title);
+      return tr ? { ...item, text: tr.text } : item;
+    }).slice(0, 7);
+
+  renderBirths(lang === 'en' ? applyTranslation(sortedBirths, transBirths) : sortedBirths.slice(0,7), lang);
+  renderEvents(lang === 'en' ? applyTranslation(sortedEvents, transEvents) : sortedEvents.slice(0,7), lang);
 }
 
-function buildWikiItemHtml(item, icon, yearLabel, lang) {
+function buildWikiItemHtml(item, icon, yearLabel, rank) {
   const rawThumb = item.pages?.[0]?.thumbnail?.source || '';
   const thumb = safeUrl(rawThumb);
-  // リンク先: 日本語 Wikipedia があれば ja、なければ en
-  const jaLink = safeUrl(item.pages?.[0]?.content_urls?.desktop?.page || '');
-  const enLink = lang === 'en'
-    ? safeUrl(item.pages?.[0]?.content_urls?.desktop?.page || '') : '';
-  const link = jaLink || enLink;
+  const rawLink = item.pages?.[0]?.content_urls?.desktop?.page || '';
+  const link = safeUrl(rawLink);
 
   const thumbHtml = thumb
     ? `<img class="wiki-thumb" src="${thumb}" alt="" loading="lazy">`
@@ -906,11 +973,18 @@ function buildWikiItemHtml(item, icon, yearLabel, lang) {
   const linkHtml = link
     ? `<a class="wiki-link" href="${link}" target="_blank" rel="noopener noreferrer">Wikipedia で見る →</a>`
     : '';
+  const viewsHtml = item._views > 0
+    ? `<span class="wiki-views">月間 ${item._views.toLocaleString()} 閲覧</span>`
+    : '';
+  const rankHtml = `<span class="wiki-rank">${rank}</span>`;
+
   return `
     <div class="wiki-item">
+      ${rankHtml}
       ${thumbHtml}
       <div class="wiki-item-body">
         <span class="wiki-year-badge">${escHtml(item.year)}${yearLabel}</span>
+        ${viewsHtml}
         <span class="wiki-text">${escHtml(item.text)}</span>
         ${linkHtml}
       </div>
@@ -923,10 +997,7 @@ function renderBirths(births, lang) {
     container.innerHTML = '<p class="wiki-empty">データが見つかりませんでした。</p>';
     return;
   }
-  const selected = lang === 'ja' ? pickSpread(births, 7) : births;
-  container.innerHTML = selected
-    .map(b => buildWikiItemHtml(b, '👤', '年生まれ', lang))
-    .join('');
+  container.innerHTML = births.map((b, i) => buildWikiItemHtml(b, '👤', '年生まれ', i + 1)).join('');
 }
 
 function renderEvents(events, lang) {
@@ -935,10 +1006,7 @@ function renderEvents(events, lang) {
     container.innerHTML = '<p class="wiki-empty">データが見つかりませんでした。</p>';
     return;
   }
-  const selected = lang === 'ja' ? pickSpread(events, 7) : events;
-  container.innerHTML = selected
-    .map(e => buildWikiItemHtml(e, '📅', '年', lang))
-    .join('');
+  container.innerHTML = events.map((e, i) => buildWikiItemHtml(e, '📅', '年', i + 1)).join('');
 }
 </script>
 </body>
