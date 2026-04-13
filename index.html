@@ -296,6 +296,116 @@
     margin-top: 10px;
     line-height: 1.5;
   }
+
+  /* Wikipedia sections */
+  .wiki-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    padding: 12px 0;
+  }
+
+  .wiki-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .wiki-error {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 10px 0;
+  }
+
+  .wiki-empty {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 10px 0;
+  }
+
+  .wiki-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .wiki-item:last-child { border-bottom: none; }
+
+  .wiki-thumb {
+    width: 46px;
+    height: 46px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--border);
+  }
+
+  .wiki-thumb-placeholder {
+    width: 46px;
+    height: 46px;
+    border-radius: 8px;
+    background: var(--section-header-bg);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+  }
+
+  .wiki-item-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .wiki-year-badge {
+    display: inline-block;
+    background: var(--section-header-bg);
+    color: var(--section-header-text);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    margin-bottom: 4px;
+  }
+
+  .wiki-text {
+    display: block;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .wiki-link {
+    display: inline-block;
+    margin-top: 3px;
+    font-size: 0.75rem;
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  .wiki-link:hover { text-decoration: underline; }
+
+  .wiki-source-note {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 12px;
+    text-align: right;
+  }
+
+  .wiki-source-note a {
+    color: var(--primary);
+    text-decoration: none;
+  }
 </style>
 </head>
 <body>
@@ -371,6 +481,27 @@
         <p class="caution-note">
           ※ 厄年は数え年で数えます。地域・宗派によって異なる場合があります。
         </p>
+      </div>
+    </div>
+    <!-- 同じ誕生日の偉人・有名人 -->
+    <div class="section">
+      <div class="section-header">同じ誕生日の偉人・有名人</div>
+      <div class="section-body">
+        <div id="r-births">
+          <div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>
+        </div>
+        <p class="wiki-source-note">出典: <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>（英語版）</p>
+      </div>
+    </div>
+
+    <!-- この日の出来事 -->
+    <div class="section">
+      <div class="section-header">この日の出来事</div>
+      <div class="section-body">
+        <div id="r-events">
+          <div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>
+        </div>
+        <p class="wiki-source-note">出典: <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipedia</a>（英語版）</p>
       </div>
     </div>
   </div>
@@ -574,7 +705,7 @@ document.getElementById('calcBtn').addEventListener('click', () => {
 
   const [y, m, d] = dateVal.split('-').map(Number);
   const birthDate = new Date(y, m - 1, d);
-  const today = new Date(2026, 3, 13); // today: 2026-04-13
+  const today = new Date();
 
   // Age
   const { age, hadBirthday } = getAge(birthDate, today);
@@ -647,7 +778,114 @@ document.getElementById('calcBtn').addEventListener('click', () => {
 
   document.getElementById('results').style.display = 'block';
   document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Wikipedia
+  fetchWikiData(m, d);
 });
+
+// ---- Wikipedia API ----
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function safeUrl(url) {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'https:') ? url : '';
+  } catch { return ''; }
+}
+
+async function fetchWikiData(month, day) {
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  const base = 'https://en.wikipedia.org/api/rest_v1/feed/onthisday';
+
+  document.getElementById('r-births').innerHTML =
+    '<div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>';
+  document.getElementById('r-events').innerHTML =
+    '<div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>';
+
+  try {
+    const [bRes, eRes] = await Promise.all([
+      fetch(`${base}/births/${mm}/${dd}`),
+      fetch(`${base}/events/${mm}/${dd}`)
+    ]);
+    const [bData, eData] = await Promise.all([bRes.json(), eRes.json()]);
+    renderBirths(bData.births || []);
+    renderEvents(eData.events || []);
+  } catch (err) {
+    const msg = '<p class="wiki-error">データの取得に失敗しました。ネットワーク接続を確認してください。</p>';
+    document.getElementById('r-births').innerHTML = msg;
+    document.getElementById('r-events').innerHTML = msg;
+  }
+}
+
+function renderBirths(births) {
+  const container = document.getElementById('r-births');
+  if (!births.length) {
+    container.innerHTML = '<p class="wiki-empty">データが見つかりませんでした。</p>';
+    return;
+  }
+
+  // Pick up to 8 entries, spread across history
+  const sorted = [...births].sort((a, b) => a.year - b.year);
+  const step = Math.max(1, Math.floor(sorted.length / 8));
+  const selected = sorted.filter((_, i) => i % step === 0).slice(0, 8);
+
+  container.innerHTML = selected.map(b => {
+    const rawThumb = b.pages?.[0]?.thumbnail?.source || '';
+    const thumb = safeUrl(rawThumb);
+    const rawLink = b.pages?.[0]?.content_urls?.desktop?.page || '';
+    const link = safeUrl(rawLink);
+    const thumbHtml = thumb
+      ? `<img class="wiki-thumb" src="${thumb}" alt="" loading="lazy">`
+      : `<div class="wiki-thumb-placeholder">👤</div>`;
+    const linkHtml = link
+      ? `<a class="wiki-link" href="${link}" target="_blank" rel="noopener noreferrer">Wikipedia で見る →</a>`
+      : '';
+    return `
+      <div class="wiki-item">
+        ${thumbHtml}
+        <div class="wiki-item-body">
+          <span class="wiki-year-badge">${escHtml(b.year)}年生まれ</span>
+          <span class="wiki-text">${escHtml(b.text)}</span>
+          ${linkHtml}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderEvents(events) {
+  const container = document.getElementById('r-events');
+  if (!events.length) {
+    container.innerHTML = '<p class="wiki-empty">データが見つかりませんでした。</p>';
+    return;
+  }
+
+  const sorted = [...events].sort((a, b) => a.year - b.year);
+  const step = Math.max(1, Math.floor(sorted.length / 8));
+  const selected = sorted.filter((_, i) => i % step === 0).slice(0, 8);
+
+  container.innerHTML = selected.map(e => {
+    const rawLink = e.pages?.[0]?.content_urls?.desktop?.page || '';
+    const link = safeUrl(rawLink);
+    const linkHtml = link
+      ? `<a class="wiki-link" href="${link}" target="_blank" rel="noopener noreferrer">Wikipedia で見る →</a>`
+      : '';
+    return `
+      <div class="wiki-item">
+        <div class="wiki-thumb-placeholder">📅</div>
+        <div class="wiki-item-body">
+          <span class="wiki-year-badge">${escHtml(e.year)}年</span>
+          <span class="wiki-text">${escHtml(e.text)}</span>
+          ${linkHtml}
+        </div>
+      </div>`;
+  }).join('');
+}
 </script>
 </body>
 </html>
