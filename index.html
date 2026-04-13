@@ -798,93 +798,147 @@ function safeUrl(url) {
   } catch { return ''; }
 }
 
+function pickSpread(arr, n) {
+  const sorted = [...arr].sort((a, b) => a.year - b.year);
+  if (sorted.length <= n) return sorted;
+  const step = sorted.length / n;
+  return Array.from({ length: n }, (_, i) => sorted[Math.round(i * step)]);
+}
+
+// MyMemory 無料翻訳API（キー不要、英語→日本語）
+async function translateText(text) {
+  try {
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|ja`
+    );
+    const data = await res.json();
+    if (data.responseStatus === 200 && data.responseData?.translatedText) {
+      return data.responseData.translatedText;
+    }
+  } catch {}
+  return text; // 翻訳失敗時は原文を返す
+}
+
+async function translateItems(items) {
+  return Promise.all(items.map(item =>
+    translateText(item.text).then(translated => ({ ...item, text: translated }))
+  ));
+}
+
 async function fetchWikiData(month, day) {
   const mm = String(month).padStart(2, '0');
   const dd = String(day).padStart(2, '0');
-  const base = 'https://en.wikipedia.org/api/rest_v1/feed/onthisday';
+  const jaBase = 'https://ja.wikipedia.org/api/rest_v1/feed/onthisday';
+  const enBase = 'https://en.wikipedia.org/api/rest_v1/feed/onthisday';
 
-  document.getElementById('r-births').innerHTML =
-    '<div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>';
-  document.getElementById('r-events').innerHTML =
-    '<div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>';
-
-  try {
-    const [bRes, eRes] = await Promise.all([
-      fetch(`${base}/births/${mm}/${dd}`),
-      fetch(`${base}/events/${mm}/${dd}`)
-    ]);
-    const [bData, eData] = await Promise.all([bRes.json(), eRes.json()]);
-    renderBirths(bData.births || []);
-    renderEvents(eData.events || []);
-  } catch (err) {
+  const setLoading = () => {
+    const spinner = '<div class="wiki-loading"><div class="wiki-spinner"></div>読み込み中...</div>';
+    document.getElementById('r-births').innerHTML = spinner;
+    document.getElementById('r-events').innerHTML = spinner;
+  };
+  const setTranslating = () => {
+    const msg = '<div class="wiki-loading"><div class="wiki-spinner"></div>日本語に翻訳中...</div>';
+    document.getElementById('r-births').innerHTML = msg;
+    document.getElementById('r-events').innerHTML = msg;
+  };
+  const setError = () => {
     const msg = '<p class="wiki-error">データの取得に失敗しました。ネットワーク接続を確認してください。</p>';
     document.getElementById('r-births').innerHTML = msg;
     document.getElementById('r-events').innerHTML = msg;
+  };
+
+  setLoading();
+
+  // ① 日本語 Wikipedia を試みる
+  try {
+    const [bRes, eRes] = await Promise.all([
+      fetch(`${jaBase}/births/${mm}/${dd}`),
+      fetch(`${jaBase}/events/${mm}/${dd}`)
+    ]);
+    if (bRes.ok && eRes.ok) {
+      const [bData, eData] = await Promise.all([bRes.json(), eRes.json()]);
+      const births = bData.births || [];
+      const events = eData.events || [];
+      if (births.length >= 2 && events.length >= 2) {
+        renderBirths(births, 'ja');
+        renderEvents(events, 'ja');
+        return;
+      }
+    }
+  } catch {}
+
+  // ② 英語 Wikipedia + MyMemory 翻訳にフォールバック
+  try {
+    const [bRes, eRes] = await Promise.all([
+      fetch(`${enBase}/births/${mm}/${dd}`),
+      fetch(`${enBase}/events/${mm}/${dd}`)
+    ]);
+    const [bData, eData] = await Promise.all([bRes.json(), eRes.json()]);
+
+    const rawBirths = pickSpread(bData.births || [], 7);
+    const rawEvents = pickSpread(eData.events || [], 7);
+
+    setTranslating();
+
+    const [transBirths, transEvents] = await Promise.all([
+      translateItems(rawBirths),
+      translateItems(rawEvents)
+    ]);
+    renderBirths(transBirths, 'en');
+    renderEvents(transEvents, 'en');
+  } catch {
+    setError();
   }
 }
 
-function renderBirths(births) {
+function buildWikiItemHtml(item, icon, yearLabel, lang) {
+  const rawThumb = item.pages?.[0]?.thumbnail?.source || '';
+  const thumb = safeUrl(rawThumb);
+  // リンク先: 日本語 Wikipedia があれば ja、なければ en
+  const jaLink = safeUrl(item.pages?.[0]?.content_urls?.desktop?.page || '');
+  const enLink = lang === 'en'
+    ? safeUrl(item.pages?.[0]?.content_urls?.desktop?.page || '') : '';
+  const link = jaLink || enLink;
+
+  const thumbHtml = thumb
+    ? `<img class="wiki-thumb" src="${thumb}" alt="" loading="lazy">`
+    : `<div class="wiki-thumb-placeholder">${icon}</div>`;
+  const linkHtml = link
+    ? `<a class="wiki-link" href="${link}" target="_blank" rel="noopener noreferrer">Wikipedia で見る →</a>`
+    : '';
+  return `
+    <div class="wiki-item">
+      ${thumbHtml}
+      <div class="wiki-item-body">
+        <span class="wiki-year-badge">${escHtml(item.year)}${yearLabel}</span>
+        <span class="wiki-text">${escHtml(item.text)}</span>
+        ${linkHtml}
+      </div>
+    </div>`;
+}
+
+function renderBirths(births, lang) {
   const container = document.getElementById('r-births');
   if (!births.length) {
     container.innerHTML = '<p class="wiki-empty">データが見つかりませんでした。</p>';
     return;
   }
-
-  // Pick up to 8 entries, spread across history
-  const sorted = [...births].sort((a, b) => a.year - b.year);
-  const step = Math.max(1, Math.floor(sorted.length / 8));
-  const selected = sorted.filter((_, i) => i % step === 0).slice(0, 8);
-
-  container.innerHTML = selected.map(b => {
-    const rawThumb = b.pages?.[0]?.thumbnail?.source || '';
-    const thumb = safeUrl(rawThumb);
-    const rawLink = b.pages?.[0]?.content_urls?.desktop?.page || '';
-    const link = safeUrl(rawLink);
-    const thumbHtml = thumb
-      ? `<img class="wiki-thumb" src="${thumb}" alt="" loading="lazy">`
-      : `<div class="wiki-thumb-placeholder">👤</div>`;
-    const linkHtml = link
-      ? `<a class="wiki-link" href="${link}" target="_blank" rel="noopener noreferrer">Wikipedia で見る →</a>`
-      : '';
-    return `
-      <div class="wiki-item">
-        ${thumbHtml}
-        <div class="wiki-item-body">
-          <span class="wiki-year-badge">${escHtml(b.year)}年生まれ</span>
-          <span class="wiki-text">${escHtml(b.text)}</span>
-          ${linkHtml}
-        </div>
-      </div>`;
-  }).join('');
+  const selected = lang === 'ja' ? pickSpread(births, 7) : births;
+  container.innerHTML = selected
+    .map(b => buildWikiItemHtml(b, '👤', '年生まれ', lang))
+    .join('');
 }
 
-function renderEvents(events) {
+function renderEvents(events, lang) {
   const container = document.getElementById('r-events');
   if (!events.length) {
     container.innerHTML = '<p class="wiki-empty">データが見つかりませんでした。</p>';
     return;
   }
-
-  const sorted = [...events].sort((a, b) => a.year - b.year);
-  const step = Math.max(1, Math.floor(sorted.length / 8));
-  const selected = sorted.filter((_, i) => i % step === 0).slice(0, 8);
-
-  container.innerHTML = selected.map(e => {
-    const rawLink = e.pages?.[0]?.content_urls?.desktop?.page || '';
-    const link = safeUrl(rawLink);
-    const linkHtml = link
-      ? `<a class="wiki-link" href="${link}" target="_blank" rel="noopener noreferrer">Wikipedia で見る →</a>`
-      : '';
-    return `
-      <div class="wiki-item">
-        <div class="wiki-thumb-placeholder">📅</div>
-        <div class="wiki-item-body">
-          <span class="wiki-year-badge">${escHtml(e.year)}年</span>
-          <span class="wiki-text">${escHtml(e.text)}</span>
-          ${linkHtml}
-        </div>
-      </div>`;
-  }).join('');
+  const selected = lang === 'ja' ? pickSpread(events, 7) : events;
+  container.innerHTML = selected
+    .map(e => buildWikiItemHtml(e, '📅', '年', lang))
+    .join('');
 }
 </script>
 </body>
